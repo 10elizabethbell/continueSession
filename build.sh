@@ -18,10 +18,13 @@ swiftc \
     -framework Cocoa \
     -framework SwiftUI \
     -Xlinker -lproc \
-    -o "$BUILD_DIR/MacOS/${APP}Helper"
+    -o "$BUILD_DIR/MacOS/$APP"
 
-echo "Compiling launcher..."
-cc -target arm64-apple-macos13.0 launcher.c -o "$BUILD_DIR/MacOS/$APP"
+# launcher.c is compiled as a build artifact but is not the CFBundleExecutable.
+# Swift is compiled directly to the CFBundleExecutable name to avoid the window
+# server parking status items when a bundle executable exec()'s a different binary.
+echo "Compiling launcher (reference build)..."
+cc -target arm64-apple-macos13.0 launcher.c -o "$BUILD_DIR/MacOS/launcher"
 
 echo "Built: build/$APP.app"
 echo "Run with: open build/$APP.app"
