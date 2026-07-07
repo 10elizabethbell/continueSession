@@ -15,10 +15,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let controller = NSHostingController(rootView: PopoverView().environmentObject(viewModel))
+        // Let the popover track the SwiftUI view's intrinsic height so the
+        // session picker and multi-line error text don't clip against a fixed
+        // frame. The view pins its own width (380pt).
+        controller.sizingOptions = [.preferredContentSize]
         popover = NSPopover()
         popover.contentViewController = controller
         popover.behavior = .transient
-        popover.contentSize = NSSize(width: 380, height: 280)
     }
 
     @objc private func togglePopover() {

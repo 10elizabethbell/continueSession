@@ -9,7 +9,6 @@ struct PopoverView: View {
             if vm.sessions.count > 1 { sessionPicker }
             fields
             statusArea
-            Spacer(minLength: 0)
             runButton
         }
         .padding(16)
