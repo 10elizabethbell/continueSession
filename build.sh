@@ -13,11 +13,9 @@ cp Info.plist "$BUILD_DIR/Info.plist"
 echo "Compiling Swift..."
 swiftc \
     -target arm64-apple-macos13.0 \
-    -import-objc-header BridgingHeader.h \
     main.swift AppDelegate.swift SessionFinder.swift PopoverViewModel.swift PopoverView.swift \
     -framework Cocoa \
     -framework SwiftUI \
-    -Xlinker -lproc \
     -o "$BUILD_DIR/MacOS/$APP"
 
 # launcher.c is compiled as a build artifact but is not the CFBundleExecutable.

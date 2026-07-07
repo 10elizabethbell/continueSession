@@ -5,79 +5,57 @@ struct ClaudeSession: Identifiable, Hashable {
     let pid: pid_t
     let sessionId: String
     let workingDirectory: String
+    let name: String?
+
+    var displayName: String {
+        let dir = (workingDirectory as NSString).lastPathComponent
+        if let name, !name.isEmpty { return "\(dir) — \(name)" }
+        return dir.isEmpty ? sessionId : dir
+    }
 }
 
+// Sessions are read from ~/.claude/sessions/<pid>.json rather than by scanning
+// process environments: CLAUDE_CODE_SESSION_ID is inherited by every child a
+// session spawns (node, git, compilers, the continueSession script itself), so
+// env scanning yields duplicates and picks a child's misleading cwd. The session
+// files hold the authoritative cwd, one entry per session, and are the same
+// source the continueSession script validates against — so anything shown here
+// is guaranteed to resume cleanly.
 func findClaudeSessions() -> [ClaudeSession] {
-    var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0]
-    var size: size_t = 0
-    guard sysctl(&mib, 4, nil, &size, nil, 0) == 0, size > 0 else { return [] }
+    let dir = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".claude/sessions", isDirectory: true)
+    guard let files = try? FileManager.default.contentsOfDirectory(
+        at: dir, includingPropertiesForKeys: nil) else { return [] }
 
-    let count = size / MemoryLayout<kinfo_proc>.stride
-    var procs = [kinfo_proc](repeating: kinfo_proc(), count: count + 10)
-    // Tell sysctl the true buffer capacity, not the byte count from the sizing
-    // call — otherwise the +10 headroom is unused and a process spawned between
-    // the two calls makes sysctl return ENOMEM and drops the whole list.
-    size = procs.count * MemoryLayout<kinfo_proc>.stride
-    guard sysctl(&mib, 4, &procs, &size, nil, 0) == 0 else { return [] }
+    var byId: [String: ClaudeSession] = [:]
+    var startedAt: [String: Double] = [:]
 
-    let actualCount = size / MemoryLayout<kinfo_proc>.stride
-    var sessions: [ClaudeSession] = []
+    for file in files where file.pathExtension == "json" {
+        guard let data = try? Data(contentsOf: file),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let sid = obj["sessionId"] as? String,
+              let pidNum = obj["pid"] as? Int else { continue }
 
-    for i in 0..<actualCount {
-        let pid = procs[i].kp_proc.p_pid
-        guard pid > 0 else { continue }
-        guard let env = processEnvironment(pid: pid),
-              let sessionId = env["CLAUDE_CODE_SESSION_ID"] else { continue }
+        let pid = pid_t(pidNum)
+        guard isAlive(pid) else { continue }               // skip stale files for dead sessions
+        if obj["kind"] as? String == "bg" { continue }     // only terminal-attached sessions
 
-        let cwd = processCWD(pid: pid) ?? env["PWD"] ?? "/"
-        sessions.append(ClaudeSession(pid: pid, sessionId: sessionId, workingDirectory: cwd))
+        let cwd = (obj["cwd"] as? String) ?? "/"
+        let name = obj["name"] as? String
+        let started = (obj["startedAt"] as? Double) ?? 0
+
+        // If a session id ever appears in two files, keep the most recent.
+        if let existing = startedAt[sid], existing >= started { continue }
+        startedAt[sid] = started
+        byId[sid] = ClaudeSession(pid: pid, sessionId: sid, workingDirectory: cwd, name: name)
     }
 
-    return sessions.sorted { $0.pid > $1.pid }
+    // Newest session first — the best guess for the terminal in front.
+    return byId.values.sorted { (startedAt[$0.sessionId] ?? 0) > (startedAt[$1.sessionId] ?? 0) }
 }
 
-private func processEnvironment(pid: pid_t) -> [String: String]? {
-    var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
-    var size: size_t = 0
-    guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > 4 else { return nil }
-
-    var buffer = [UInt8](repeating: 0, count: size)
-    guard sysctl(&mib, 3, &buffer, &size, nil, 0) == 0 else { return nil }
-
-    let argc = Int(buffer.withUnsafeBytes { $0.load(fromByteOffset: 0, as: Int32.self) })
-    var offset = MemoryLayout<Int32>.size
-
-    // skip exec path
-    while offset < buffer.count && buffer[offset] != 0 { offset += 1 }
-    while offset < buffer.count && buffer[offset] == 0 { offset += 1 }
-
-    // skip argv strings
-    for _ in 0..<argc {
-        while offset < buffer.count && buffer[offset] != 0 { offset += 1 }
-        while offset < buffer.count && buffer[offset] == 0 { offset += 1 }
-    }
-
-    var env: [String: String] = [:]
-    while offset < buffer.count && buffer[offset] != 0 {
-        let start = offset
-        while offset < buffer.count && buffer[offset] != 0 { offset += 1 }
-        if let entry = String(bytes: buffer[start..<offset], encoding: .utf8),
-           let eqIdx = entry.firstIndex(of: "=") {
-            env[String(entry[..<eqIdx])] = String(entry[entry.index(after: eqIdx)...])
-        }
-        offset += 1
-    }
-
-    return env.isEmpty ? nil : env
-}
-
-private func processCWD(pid: pid_t) -> String? {
-    var vpi = proc_vnodepathinfo()
-    let ret = proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &vpi, Int32(MemoryLayout<proc_vnodepathinfo>.size))
-    guard ret > 0 else { return nil }
-    return withUnsafeBytes(of: &vpi.pvi_cdir.vip_path) { raw in
-        let ptr = raw.baseAddress!.assumingMemoryBound(to: CChar.self)
-        let path = String(cString: ptr)
-        return path.isEmpty ? nil : path
-    }
+private func isAlive(_ pid: pid_t) -> Bool {
+    guard pid > 0 else { return false }
+    if kill(pid, 0) == 0 { return true }
+    return errno == EPERM   // process exists but is owned by another user
 }

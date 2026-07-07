@@ -36,7 +36,7 @@ struct PopoverView: View {
                 set: { vm.selectSession(id: $0) }
             )) {
                 ForEach(vm.sessions) { s in
-                    Text(String(s.sessionId.prefix(24))).tag(s.sessionId)
+                    Text(s.displayName).tag(s.sessionId)
                 }
             }
         }
