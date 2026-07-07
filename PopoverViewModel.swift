@@ -43,8 +43,12 @@ class PopoverViewModel: ObservableObject {
 
         DispatchQueue.global(qos: .userInitiated).async {
             let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/bin/bash")
-            process.arguments = ["-c", "/opt/homebrew/bin/continueSession '\(t)' '\(d)' '\(s)' -b"]
+            // Invoke the script directly with an argument vector so the shell
+            // never parses the field values — passing them through `bash -c`
+            // with string interpolation is a shell-injection vector (e.g. a
+            // directory path containing a single quote breaks out of quoting).
+            process.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/continueSession")
+            process.arguments = [t, d, s, "-b"]
 
             var env = ProcessInfo.processInfo.environment
             env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"

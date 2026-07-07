@@ -14,6 +14,10 @@ func findClaudeSessions() -> [ClaudeSession] {
 
     let count = size / MemoryLayout<kinfo_proc>.stride
     var procs = [kinfo_proc](repeating: kinfo_proc(), count: count + 10)
+    // Tell sysctl the true buffer capacity, not the byte count from the sizing
+    // call — otherwise the +10 headroom is unused and a process spawned between
+    // the two calls makes sysctl return ENOMEM and drops the whole list.
+    size = procs.count * MemoryLayout<kinfo_proc>.stride
     guard sysctl(&mib, 4, &procs, &size, nil, 0) == 0 else { return [] }
 
     let actualCount = size / MemoryLayout<kinfo_proc>.stride
@@ -73,6 +77,7 @@ private func processCWD(pid: pid_t) -> String? {
     guard ret > 0 else { return nil }
     return withUnsafeBytes(of: &vpi.pvi_cdir.vip_path) { raw in
         let ptr = raw.baseAddress!.assumingMemoryBound(to: CChar.self)
-        return String(cString: ptr).isEmpty ? nil : String(cString: ptr)
+        let path = String(cString: ptr)
+        return path.isEmpty ? nil : path
     }
 }
