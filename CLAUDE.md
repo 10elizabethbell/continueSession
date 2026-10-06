@@ -9,7 +9,7 @@ This is a multi-project workspace. Each subdirectory is an independent project:
 | Project | Type | Stack | CLAUDE.md |
 |---|---|---|---|
 | `amazon/` | Amazon OA scraper (2-step: storefront → supplier leads) | TypeScript, Playwright, SQLite, Claude Haiku | Yes |
-| `menuBarApps/ApplicationManager/` | Menu bar app launcher/manager | Swift (swiftc, no Xcode) | No |
+| `menuBarApps/applicationManager/` | Menu bar app launcher/manager | Swift (swiftc, no Xcode) | No |
 | `menuBarApps/Caffeinated/` | Menu bar app | Swift (Xcode project) | No |
 | `menuBarApps/whisperFlow/` | Menu bar dictation app (on-device transcription + LLM cleanup) | Python, MLX, PyObjC | Yes |
 | `vendingMachines/` | Vending machine web app | Next.js, TypeScript | No (see AGENTS.md) |
@@ -26,7 +26,7 @@ All menu bar apps in this workspace follow the same pattern:
 ## ApplicationManager build
 
 ```bash
-cd menuBarApps/ApplicationManager
+cd menuBarApps/applicationManager
 ./build.sh          # compiles Swift sources → build/ApplicationManager.app
 open build/ApplicationManager.app
 ```
